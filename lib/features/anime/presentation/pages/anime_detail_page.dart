@@ -153,7 +153,7 @@ class _AnimeDetailPageState extends State<AnimeDetailPage> {
           top: 48.h,
           left: 16.w,
           child: IconButton(
-            onPressed: () => context.pop(),
+            onPressed: () => context.push('/'),
             icon: Icon(
               Icons.arrow_back_ios_new,
               color: AppTheme.textPrimary,

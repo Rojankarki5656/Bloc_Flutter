@@ -1,154 +1,154 @@
-// // lib/main.dart
+// lib/main.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'app/app.dart';
+import 'app/app_bloc_observer.dart';
+import 'core/di/injection.dart';
+import 'core/utils/logger.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  AppLogger.info('🚀 Starting AnimeWeebs...');
+  
+  Bloc.observer = AppBlocObserver();
+  
+  await initDependencies();
+  await initHive();
+  
+  runApp(const App());
+}
+
+Future<void> initHive() async {
+  try {
+    AppLogger.info('📦 Initializing Hive...');
+    
+    final appDocumentDir = await getApplicationDocumentsDirectory();
+    Hive.init(appDocumentDir.path);
+    
+    await Hive.openBox('anime_cache');  
+    await Hive.openBox('watch_history');
+    await Hive.openBox('user_preferences');
+    await Hive.openBox('continue_watching');
+    
+    AppLogger.success('✅ Hive initialized successfully');
+  } catch (e, stackTrace) {
+    AppLogger.error('❌ Failed to initialize Hive', e, stackTrace);
+    rethrow;
+  }
+}
+
+
 // import 'package:flutter/material.dart';
-// import 'package:flutter_bloc/flutter_bloc.dart';
-// import 'package:hive_flutter/hive_flutter.dart';
-// import 'package:path_provider/path_provider.dart';
+// import 'package:webview_flutter/webview_flutter.dart';
 
-// import 'app/app.dart';
-// import 'app/app_bloc_observer.dart';
-// import 'core/di/injection.dart';
-// import 'core/utils/logger.dart';
-
-// void main() async {
-//   WidgetsFlutterBinding.ensureInitialized();
-  
-//   AppLogger.info('🚀 Starting AnimeWeebs...');
-  
-//   Bloc.observer = AppBlocObserver();
-  
-//   await initDependencies();
-//   await initHive();
-  
-//   runApp(const App());
+// void main() {
+//   runApp(const MyApp());
 // }
 
-// Future<void> initHive() async {
-//   try {
-//     AppLogger.info('📦 Initializing Hive...');
-    
-//     final appDocumentDir = await getApplicationDocumentsDirectory();
-//     Hive.init(appDocumentDir.path);
-    
-//     await Hive.openBox('anime_cache');  
-//     await Hive.openBox('watch_history');
-//     await Hive.openBox('user_preferences');
-//     await Hive.openBox('continue_watching');
-    
-//     AppLogger.success('✅ Hive initialized successfully');
-//   } catch (e, stackTrace) {
-//     AppLogger.error('❌ Failed to initialize Hive', e, stackTrace);
-//     rethrow;
+// class MyApp extends StatelessWidget {
+//   const MyApp({super.key});
+
+//   @override
+//   Widget build(BuildContext context) {
+//     return MaterialApp(
+//       debugShowCheckedModeBanner: false,
+//       theme: ThemeData.dark(),
+//       home: const VideoPage(),
+//     );
 //   }
 // }
 
+// class VideoPage extends StatefulWidget {
+//   const VideoPage({super.key});
 
-import 'package:flutter/material.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+//   @override
+//   State<VideoPage> createState() => _VideoPageState();
+// }
 
-void main() {
-  runApp(const MyApp());
-}
+// class _VideoPageState extends State<VideoPage> {
+//   late final WebViewController _controller;
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+//   @override
+//   void initState() {
+//     super.initState();
 
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark(),
-      home: const VideoPage(),
-    );
-  }
-}
+//     _controller = WebViewController()
+//       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+//       ..setBackgroundColor(Colors.black)
+//       ..setNavigationDelegate(
+//         NavigationDelegate(
+//           onPageStarted: (url) {
+//             debugPrint('Started: $url');
+//           },
+//           onPageFinished: (url) {
+//             debugPrint('Finished: $url');
+//           },
+//           onWebResourceError: (error) {
+//             debugPrint(
+//               'Error ${error.errorCode}: ${error.description}',
+//             );
+//           },
+//         ),
+//       );
 
-class VideoPage extends StatefulWidget {
-  const VideoPage({super.key});
+//     _loadPlayer();
+//   }
 
-  @override
-  State<VideoPage> createState() => _VideoPageState();
-}
+//   Future<void> _loadPlayer() async {
+//     const html = '''
+// <!DOCTYPE html>
+// <html>
+// <head>
+//   <meta
+//     name="viewport"
+//     content="width=device-width, initial-scale=1.0"
+//   >
 
-class _VideoPageState extends State<VideoPage> {
-  late final WebViewController _controller;
+//   <style>
+//     html, body {
+//       margin: 0;
+//       padding: 0;
+//       width: 100%;
+//       height: 100%;
+//       background: #000;
+//       overflow: hidden;
+//     }
 
-  @override
-  void initState() {
-    super.initState();
+//     iframe {
+//       width: 100%;
+//       height: 100%;
+//       border: none;
+//     }
+//   </style>
+// </head>
 
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.black)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (url) {
-            debugPrint('Started: $url');
-          },
-          onPageFinished: (url) {
-            debugPrint('Finished: $url');
-          },
-          onWebResourceError: (error) {
-            debugPrint(
-              'Error ${error.errorCode}: ${error.description}',
-            );
-          },
-        ),
-      );
+// <body>
 
-    _loadPlayer();
-  }
+//   <iframe
+//     src="https://megavid.buzz/ani/21/1/dub"
+//     allowfullscreen>
+//   </iframe>
 
-  Future<void> _loadPlayer() async {
-    const html = '''
-<!DOCTYPE html>
-<html>
-<head>
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  >
+// </body>
+// </html>
+// ''';
 
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      background: #000;
-      overflow: hidden;
-    }
+//     await _controller.loadHtmlString(html);
+//   }
 
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-    }
-  </style>
-</head>
-
-<body>
-
-  <iframe
-    src="https://megavid.buzz/ani/21/1/dub"
-    allowfullscreen>
-  </iframe>
-
-</body>
-</html>
-''';
-
-    await _controller.loadHtmlString(html);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: WebViewWidget(
-          controller: _controller,
-        ),
-      ),
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Scaffold(
+//       backgroundColor: Colors.black,
+//       body: SafeArea(
+//         child: WebViewWidget(
+//           controller: _controller,
+//         ),
+//       ),
+//     );
+//   }
+// }
