@@ -1,10 +1,7 @@
 // lib/features/watch/data/datasources/watch_remote_datasource.dart
-import 'package:animeweebs/features/anime/data/models/anime_model.dart';
-
 import '../../../../core/services/api_service.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/utils/logger.dart';
-import '../../domain/entities/episode.dart';
 import '../models/episode_model.dart';
 import '../models/server_model.dart';
 import '../models/watch_series_model.dart';
@@ -14,178 +11,107 @@ class WatchRemoteDataSource {
 
   WatchRemoteDataSource(this._apiService);
 
-  //Get Episodes only
-
-  Future<AnimeModel> getAnimeDetail(String id) async {
-    const query = '''
-      query (\$id: Int) {
-        Media(id: \$id, type: ANIME) {
-          id
-          title { romaji english native }
-          coverImage { large medium extraLarge }
-          bannerImage
-          format
-          status
-          episodes
-          duration
-          season
-          seasonYear
-          averageScore
-          popularity
-          favourites
-          genres
-          synonyms
-          source
-          isAdult
-          description(asHtml: false)
-          nextAiringEpisode { episode timeUntilAiring }
-          studios(isMain: false) { nodes { id name } }
-          tags { id name rank }
-        }
-      }
-    ''';
-
-    final variables = {
-      'id': int.parse(id),
-    };
-    final response = await _apiService.graphQL(query, variables: variables);
-
-    if (response is! Map) {
-      throw Exception('Invalid anime response format');
-    }
-
-    final responseData = response['data'];
-    if (responseData is! Map || responseData['Media'] is! Map) {
-      throw Exception('Anime not found');
-    }
-
-    final media = Map<String, dynamic>.from(responseData['Media']);
-
-    return AnimeModel.fromJson(media);
-  }
-
   /// Get series data with episodes
   Future<WatchSeriesModel> getSeriesData(String id, String type) async {
     try {
       AppLogger.debug('📺 Fetching series data: id=$id, type=$type');
 
-      // Try primary API first
+      // 1. Try primary API (Anikoto)
       try {
-        const endpoint = '${ApiEndpoints.baseUrl}/watch';
-        AppLogger.debug('🌐 Fetching watch API: $endpoint?id=$id');
         final response = await _apiService.get(
-          endpoint,
+          '${ApiEndpoints.baseUrl}/api/watch',
           queryParams: {'id': id},
         );
 
-        if (response is! Map) {
-          throw Exception('Invalid watch response format');
-        }
-        final responseMap = Map<String, dynamic>.from(response);
-
-        AppLogger.debug('📦 Watch response keys: ${responseMap.keys}');
-
-        // Handle nested response
-        final outerData = responseMap['data'];
+        final outerData = response['data'];
         final innerData = outerData is Map && outerData['data'] is Map
             ? outerData['data']
             : outerData;
 
-        if (innerData is! Map) {
-          throw Exception('Invalid response structure');
+        if (innerData is Map && innerData['episodes'] is List) {
+          final episodes = innerData['episodes'] as List;
+          
+          // ✅ If episodes have valid embed_url, use them
+          if (episodes.isNotEmpty) {
+            final firstEp = episodes.first;
+            if (firstEp is Map && firstEp['embed_url'] is Map) {
+              AppLogger.success('✅ Using Anikoto data with embed URLs');
+              return WatchSeriesModel.fromJson(
+                Map<String, dynamic>.from(innerData),
+              );
+            }
+          }
         }
-
-        final innerDataMap = Map<String, dynamic>.from(innerData);
-        final seriesData =
-            innerDataMap['anime'] ?? innerDataMap['series'] ?? innerDataMap;
-
-        if (seriesData is! Map) {
-          throw Exception('Invalid series response structure');
-        }
-
-        return WatchSeriesModel.fromJson(
-          Map<String, dynamic>.from(seriesData),
-        );
       } catch (primaryError) {
-        AppLogger.warning(
-            '⚠️ Primary API failed, trying fallback: $primaryError');
-
-        // Fallback to AniList
-        return await _getFallbackSeriesData(id);
+        AppLogger.warning('⚠️ Primary API failed: $primaryError');
       }
-    } catch (e) {
-      AppLogger.error('❌ Failed to fetch series data', e);
+
+      // 2. Fallback: Use AniList + MegaVid
+      AppLogger.info('📺 Using AniList + MegaVid fallback');
+      return await _getFallbackSeriesData(id);
+    } catch (e, stackTrace) {
+      AppLogger.error('❌ Failed to fetch series data', e, stackTrace);
       rethrow;
     }
   }
 
-  /// Fallback series data from AniList
+  /// Fallback using AniList for metadata + MegaVid for streaming
   Future<WatchSeriesModel> _getFallbackSeriesData(String id) async {
-    final animeData = await getAnimeDetail(id);
+    final response = await _apiService.get(
+      '${ApiEndpoints.baseUrl}/api/anime/$id',
+    );
 
-    // Create fallback episodes
-    final totalEpisodes = animeData.episodes ?? 12;
+    final rawData = response['data'] ?? response;
+    if (rawData is! Map) throw Exception('Anime not found');
+    final data = Map<String, dynamic>.from(rawData);
+
+    final totalEpisodes = (data['episodes'] as num?)?.toInt() ?? 12;
+
+    // ✅ Create episodes with WORKING MegaVid URLs
     final episodes = List.generate(
       totalEpisodes,
-      (index) => EpisodeModel(
-        number: index + 1,
+      (index) => EpisodeModel.fromMegaVid(
+        animeId: id,
+        episodeNumber: index + 1,
         title: 'Episode ${index + 1}',
-        embedUrls: {
-          'sub': '${ApiEndpoints.megaVid}/ani/$id/${index + 1}/sub',
-          'dub': '${ApiEndpoints.megaVid}/ani/$id/${index + 1}/dub',
-        },
+        hasSub: true,
+        hasDub: false, // Set to true if you want dub option
       ),
     );
 
     return WatchSeriesModel(
       id: id,
-      aniId: id,
-      title: animeData.title,
-      englishTitle: animeData.englishTitle,
-      poster: animeData.poster,
-      bannerImage: animeData.bannerImage,
-      description: animeData.description,
-      duration: animeData.duration,
-      status: animeData.status,
-      format: animeData.format,
+      aniId: data['ani_id']?.toString() ?? id,
+      title: data['title']?.toString() ?? 'Unknown',
+      englishTitle: data['english']?.toString(),
+      poster: data['poster']?.toString(),
+      bannerImage: data['bannerImage']?.toString(),
+      description: data['description']?.toString(),
+      duration: (data['episodeDuration'] as num?)?.toInt(),
+      status: data['status']?.toString(),
+      format: data['format']?.toString(),
       totalEpisodes: totalEpisodes,
       episodes: episodes,
       type: 'anime',
     );
   }
 
-  /// Get FlixCloud servers
+  /// Get FlixCloud servers (secondary fallback)
   Future<List<ServerModel>> getFlixCloudServers(
     String anilistId,
     int episodeNumber,
   ) async {
     try {
-      AppLogger.debug(
-          '🎬 Fetching FlixCloud servers: $anilistId/$episodeNumber');
-
-      final endpoint = '${ApiEndpoints.flixApi}/$anilistId/$episodeNumber';
-      AppLogger.debug('🌐 Fetching FlixCloud API: $endpoint');
       final response = await _apiService.get(
-        endpoint,
+        '${ApiEndpoints.baseUrl}/api/flix/$anilistId/$episodeNumber',
       );
 
-      if (response is! Map) {
-        AppLogger.warning('⚠️ Invalid FlixCloud response format');
-        return [];
-      }
-
-      // Handle nested response
-      final data = response['data'] ?? response;
-      if (data is! Map) {
-        AppLogger.warning('⚠️ Invalid FlixCloud data format');
-        return [];
-      }
+      final rawData = response['data'] ?? response;
+      if (rawData is! Map) return [];
+      final data = Map<String, dynamic>.from(rawData);
       final servers = data['servers'] as List<dynamic>? ?? [];
 
-      if (servers.isEmpty) {
-        AppLogger.warning('⚠️ No FlixCloud servers found');
-        return [];
-      }
+      if (servers.isEmpty) return [];
 
       return servers
           .whereType<Map>()
@@ -197,22 +123,47 @@ class WatchRemoteDataSource {
     }
   }
 
-  /// Build MegaPlay embed URLs from the anime and episode identifiers.
-  List<ServerModel> getMegaPlayServers(Episode episode, String animeId) {
+  /// Get MegaVid servers (PRIMARY)
+  List<ServerModel> getMegaVidServers({
+    required String animeId,
+    required EpisodeModel episode,
+  }) {
     final servers = <ServerModel>[];
-    final languages = <String>[];
 
-    if (episode.hasSub) languages.add('sub');
-    if (episode.hasDub) languages.add('dub');
-    if (languages.isEmpty) languages.add('sub');
+    // Add SUB server
+    if (episode.hasSub) {
+      servers.add(ServerModel(
+        id: 'megavid-sub-${episode.number}',
+        name: 'SUB',
+        url: episode.subUrl!,
+        language: 'sub',
+        type: 'iframe',
+      ));
+    }
 
-    for (final language in languages) {
-      final url =
-          '${ApiEndpoints.megaVid}/ani/$animeId/${episode.number}/$language';
-      servers.add(ServerModel.fromEmbedUrl(
-        url: url,
-        language: language,
-        episodeNumber: episode.number,
+    // Add DUB server
+    if (episode.hasDub) {
+      servers.add(ServerModel(
+        id: 'megavid-dub-${episode.number}',
+        name: 'DUB',
+        url: episode.dubUrl!,
+        language: 'dub',
+        type: 'iframe',
+      ));
+    }
+
+    // If no servers from embed URLs, create from scratch
+    if (servers.isEmpty) {
+      servers.add(ServerModel(
+        id: 'megavid-sub-${episode.number}',
+        name: 'SUB',
+        url: ApiEndpoints.buildMegaVidUrl(
+          animeId,
+          episode.number,
+          language: 'sub',
+        ),
+        language: 'sub',
+        type: 'iframe',
       ));
     }
 

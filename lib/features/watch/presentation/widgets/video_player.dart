@@ -11,7 +11,8 @@ class VideoPlayer extends StatefulWidget {
   final bool isLoading;
   final bool isError;
   final bool theaterMode;
-  final Function(int currentTime, int duration, int progress)? onProgress;
+  final int? episodeNumber;
+  final String? animeId;
 
   const VideoPlayer({
     super.key,
@@ -19,7 +20,8 @@ class VideoPlayer extends StatefulWidget {
     this.isLoading = false,
     this.isError = false,
     this.theaterMode = false,
-    this.onProgress,
+    this.episodeNumber,
+    this.animeId,
   });
 
   @override
@@ -27,64 +29,102 @@ class VideoPlayer extends StatefulWidget {
 }
 
 class _VideoPlayerState extends State<VideoPlayer> {
-  late WebViewController _controller;
+  WebViewController? _controller;
   int _currentServerIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _initController();
+    if (widget.servers.isNotEmpty) {
+      _initController();
+    }
+  }
+
+  @override
+  void didUpdateWidget(VideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Reload when servers change
+    if (widget.servers.isNotEmpty && 
+        (oldWidget.servers.isEmpty || 
+         oldWidget.servers[0].url != widget.servers[0].url)) {
+      _initController();
+    }
   }
 
   void _initController() {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(AppTheme.backgroundColor)
+      ..setBackgroundColor(Colors.black)
       ..setNavigationDelegate(
         NavigationDelegate(
-          onProgress: (int progress) {
-            AppLogger.debug('🌐 Loading: $progress%');
+          onPageStarted: (url) {
+            AppLogger.debug('🌐 Player started: $url');
           },
-          onPageStarted: (String url) {
-            AppLogger.debug('🌐 Page started: $url');
+          onPageFinished: (url) {
+            AppLogger.debug('✅ Player finished: $url');
           },
-          onPageFinished: (String url) {
-            AppLogger.debug('🌐 Page finished: $url');
-          },
-          onWebResourceError: (WebResourceError error) {
-            AppLogger.error('🌐 WebView error: ${error.description}');
+          onWebResourceError: (error) {
+            AppLogger.error(
+              '❌ WebView Error ${error.errorCode}: ${error.description}',
+            );
           },
         ),
       );
 
-    _loadCurrentServer();
+    _loadPlayer();
   }
 
-  @override
-  void didUpdateWidget(covariant VideoPlayer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    final oldUrl =
-        oldWidget.servers.isNotEmpty ? oldWidget.servers.first.url : null;
-    final newUrl = widget.servers.isNotEmpty ? widget.servers.first.url : null;
-
-    if (newUrl != null && newUrl != oldUrl) {
-      _currentServerIndex = 0;
-      _loadCurrentServer();
-    }
-  }
-
-  void _loadCurrentServer() {
-    if (widget.servers.isEmpty || !mounted) return;
-
-    if (_currentServerIndex >= widget.servers.length) {
-      _currentServerIndex = 0;
-    }
+  Future<void> _loadPlayer() async {
+    if (_controller == null) return;
 
     final url = widget.servers[_currentServerIndex].url;
-    if (url.isEmpty) return;
+    AppLogger.info('🎬 Loading player URL: $url');
 
-    _controller.loadRequest(Uri.parse(url));
+    // ✅ Load iframe HTML directly
+    final html = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+    iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <iframe
+    src="$url"
+    allowfullscreen
+    allow="autoplay; fullscreen; encrypted-media; picture-in-picture">
+  </iframe>
+</body>
+</html>
+''';
+
+    await _controller!.loadHtmlString(html);
+  }
+
+  void _switchServer(int index) {
+    if (index == _currentServerIndex) return;
+    setState(() {
+      _currentServerIndex = index;
+    });
+    _loadPlayer();
   }
 
   @override
@@ -97,6 +137,10 @@ class _VideoPlayerState extends State<VideoPlayer> {
       return _buildError();
     }
 
+    if (_controller == null) {
+      return _buildLoading();
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.black,
@@ -107,7 +151,59 @@ class _VideoPlayerState extends State<VideoPlayer> {
       clipBehavior: Clip.antiAlias,
       child: AspectRatio(
         aspectRatio: 16 / 9,
-        child: WebViewWidget(controller: _controller),
+        child: Stack(
+          children: [
+            WebViewWidget(controller: _controller!),
+            
+            // Server switcher (if multiple servers)
+            if (widget.servers.length > 1)
+              Positioned(
+                top: 8.h,
+                right: 8.w,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+                  decoration: BoxDecoration(
+                    color: AppTheme.backgroundColor.withOpacity(0.8),
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: widget.servers.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final server = entry.value;
+                      final isActive = index == _currentServerIndex;
+                      
+                      return GestureDetector(
+                        onTap: () => _switchServer(index),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8.w,
+                            vertical: 4.h,
+                          ),
+                          margin: EdgeInsets.symmetric(horizontal: 2.w),
+                          decoration: BoxDecoration(
+                            color: isActive
+                                ? AppTheme.primaryGold
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(6.r),
+                          ),
+                          child: Text(
+                            server.language.toUpperCase(),
+                            style: AppTheme.labelSmall.copyWith(
+                              color: isActive
+                                  ? AppTheme.backgroundColor
+                                  : AppTheme.textPrimary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -118,9 +214,9 @@ class _VideoPlayerState extends State<VideoPlayer> {
         color: AppTheme.surfaceColor,
         borderRadius: BorderRadius.circular(12.r),
       ),
-      child: AspectRatio(
+      child: const AspectRatio(
         aspectRatio: 16 / 9,
-        child: const Center(
+        child: Center(
           child: CircularProgressIndicator(
             color: AppTheme.primaryGold,
           ),

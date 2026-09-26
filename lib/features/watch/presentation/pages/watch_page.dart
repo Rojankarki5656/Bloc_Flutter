@@ -138,6 +138,8 @@ class _WatchPageState extends State<WatchPage> {
                   isLoading: state.isServerLoading,
                   isError: state.servers.isEmpty,
                   theaterMode: state.theaterMode,
+                  episodeNumber: state.currentEpisode?.number,
+                  animeId: state.series.id,
                 ),
                 if (!state.theaterMode)
                   Expanded(
@@ -228,9 +230,7 @@ class _WatchPageState extends State<WatchPage> {
 
           // Theater mode toggle
           _buildIconButton(
-            icon: state.theaterMode
-                ? Icons.fullscreen_exit
-                : Icons.fullscreen,
+            icon: state.theaterMode ? Icons.fullscreen_exit : Icons.fullscreen,
             onTap: () => _watchBloc.add(const ToggleTheaterMode()),
           ),
 
@@ -369,7 +369,8 @@ class _WatchPageState extends State<WatchPage> {
           children: [
             Icon(
               icon,
-              color: isPrimary ? AppTheme.backgroundColor : AppTheme.textPrimary,
+              color:
+                  isPrimary ? AppTheme.backgroundColor : AppTheme.textPrimary,
               size: 20.sp,
             ),
             SizedBox(width: 8.w),

@@ -5,6 +5,7 @@ import '../../domain/entities/server.dart';
 import '../../domain/repository/i_watch_repository.dart';
 import '../datasources/watch_remote_datasource.dart';
 import '../datasources/watch_local_datasource.dart';
+import '../models/episode_model.dart';
 
 class WatchRepositoryImpl implements IWatchRepository {
   final WatchRemoteDataSource _remoteDataSource;
@@ -28,27 +29,44 @@ class WatchRepositoryImpl implements IWatchRepository {
     String? server,
   }) async {
     try {
-      // If FlixCloud server requested, fetch from FlixCloud
-      if (server == 'flixcloud') {
-        final flixServers = await _remoteDataSource.getFlixCloudServers(
-          animeId,
-          episodeNumber,
-        );
-        if (flixServers.isNotEmpty) {
-          return flixServers;
+      // 1. Get series data (this will use Anikoto or fallback)
+      final series = await _remoteDataSource.getSeriesData(animeId, 'anime');
+
+      // 2. Find the episode
+      EpisodeModel? episode;
+      for (final ep in series.episodes) {
+        if (ep.number == episodeNumber) {
+          episode = ep as EpisodeModel;
+          break;
         }
       }
 
-      // Default: Get from series data
-      final series = await _remoteDataSource.getSeriesData(animeId, 'anime');
-      final episode = series.episodes.firstWhere(
-        (e) => e.number == episodeNumber,
-        orElse: () => series.episodes.first,
+      if (episode == null) {
+        AppLogger.warning('⚠️ Episode $episodeNumber not found');
+        return [];
+      }
+
+      // 3. ✅ Get MegaVid servers (this works!)
+      final megaVidServers = _remoteDataSource.getMegaVidServers(
+        animeId: animeId,
+        episode: episode,
       );
 
-      return _remoteDataSource.getMegaPlayServers(episode, animeId);
-    } catch (e) {
-      AppLogger.error('❌ Failed to get episode stream', e);
+      if (megaVidServers.isNotEmpty) {
+        AppLogger.success('✅ Found ${megaVidServers.length} MegaVid servers');
+        return megaVidServers;
+      }
+
+      // 4. Fallback to FlixCloud
+      AppLogger.info('⚠️ No MegaVid servers, trying FlixCloud...');
+      final flixServers = await _remoteDataSource.getFlixCloudServers(
+        animeId,
+        episodeNumber,
+      );
+
+      return flixServers;
+    } catch (e, stackTrace) {
+      AppLogger.error('❌ Failed to get episode stream', e, stackTrace);
       return [];
     }
   }
