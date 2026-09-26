@@ -23,6 +23,10 @@ class WatchRemoteDataSource {
           queryParams: {'id': id},
         );
 
+        if (response is! Map) {
+          throw Exception('Invalid watch response');
+        }
+
         final outerData = response['data'];
         final innerData = outerData is Map && outerData['data'] is Map
             ? outerData['data']
@@ -58,10 +62,10 @@ class WatchRemoteDataSource {
   /// Fallback using AniList for metadata + MegaVid for streaming
   Future<WatchSeriesModel> _getFallbackSeriesData(String id) async {
     final response = await _apiService.get(
-      '${ApiEndpoints.baseUrl}/api/anime/$id',
+      '${ApiEndpoints.baseUrl}/anime/$id',
     );
 
-    final rawData = response['data'] ?? response;
+    final rawData = response is Map ? response['data'] ?? response : response;
     if (rawData is! Map) throw Exception('Anime not found');
     final data = Map<String, dynamic>.from(rawData);
 
@@ -106,7 +110,7 @@ class WatchRemoteDataSource {
         '${ApiEndpoints.baseUrl}/api/flix/$anilistId/$episodeNumber',
       );
 
-      final rawData = response['data'] ?? response;
+      final rawData = response is Map ? response['data'] ?? response : response;
       if (rawData is! Map) return [];
       final data = Map<String, dynamic>.from(rawData);
       final servers = data['servers'] as List<dynamic>? ?? [];
