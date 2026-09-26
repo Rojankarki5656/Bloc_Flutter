@@ -1,4 +1,6 @@
 // lib/features/watch/data/datasources/watch_remote_datasource.dart
+import 'package:animeweebs/features/anime/data/models/anime_model.dart';
+
 import '../../../../core/services/api_service.dart';
 import '../../../../core/constants/api_endpoints.dart';
 import '../../../../core/utils/logger.dart';
@@ -10,6 +12,44 @@ class WatchRemoteDataSource {
   final ApiService _apiService;
 
   WatchRemoteDataSource(this._apiService);
+
+  Future<AnimeModel> getAnimeDetail(String id) async {
+    final query = '''
+      query (\$id: Int) {
+        Media(id: \$id, type: ANIME) {
+          id
+          title { romaji english native }
+          coverImage { large medium extraLarge }
+          bannerImage
+          format
+          status
+          episodes
+          duration
+          season
+          seasonYear
+          averageScore
+          popularity
+          favourites
+          genres
+          synonyms
+          source
+          isAdult
+          description(asHtml: false)
+          nextAiringEpisode { episode timeUntilAiring }
+          studios(isMain: false) { nodes { id name } }
+          tags { id name rank }
+        }
+      }
+    ''';
+
+    final variables = {'id': int.parse(id)};
+    final response = await _apiService.graphQL(query, variables: variables);
+
+    final media = response['data']['Media'];
+    if (media == null) throw Exception('Anime not found');
+
+    return AnimeModel.fromJson(media);
+  }
 
   /// Get series data with episodes
   Future<WatchSeriesModel> getSeriesData(String id, String type) async {
@@ -34,7 +74,7 @@ class WatchRemoteDataSource {
 
         if (innerData is Map && innerData['episodes'] is List) {
           final episodes = innerData['episodes'] as List;
-          
+
           // ✅ If episodes have valid embed_url, use them
           if (episodes.isNotEmpty) {
             final firstEp = episodes.first;
@@ -61,15 +101,17 @@ class WatchRemoteDataSource {
 
   /// Fallback using AniList for metadata + MegaVid for streaming
   Future<WatchSeriesModel> _getFallbackSeriesData(String id) async {
-    final response = await _apiService.get(
-      '${ApiEndpoints.baseUrl}/anime/$id',
-    );
+    // final response = await _apiService.get(
+    //   '${ApiEndpoints.baseUrl}/anime/$id',
+    // );
 
-    final rawData = response is Map ? response['data'] ?? response : response;
-    if (rawData is! Map) throw Exception('Anime not found');
-    final data = Map<String, dynamic>.from(rawData);
+    final data = await getAnimeDetail(id);
 
-    final totalEpisodes = (data['episodes'] as num?)?.toInt() ?? 12;
+    // final rawData = response is Map ? response['data'] ?? response : response;
+    // if (rawData is! Map) throw Exception('Anime not found');
+    // final data = Map<String, dynamic>.from(rawData);
+
+    final totalEpisodes = (data.episodes as num?)?.toInt() ?? 12;
 
     // ✅ Create episodes with WORKING MegaVid URLs
     final episodes = List.generate(
@@ -85,19 +127,35 @@ class WatchRemoteDataSource {
 
     return WatchSeriesModel(
       id: id,
-      aniId: data['ani_id']?.toString() ?? id,
-      title: data['title']?.toString() ?? 'Unknown',
-      englishTitle: data['english']?.toString(),
-      poster: data['poster']?.toString(),
-      bannerImage: data['bannerImage']?.toString(),
-      description: data['description']?.toString(),
-      duration: (data['episodeDuration'] as num?)?.toInt(),
-      status: data['status']?.toString(),
-      format: data['format']?.toString(),
+      aniId: data.id.toString(),
+      title: data.title.toString(),
+      englishTitle: data.englishTitle?.toString(),
+      poster: data.poster?.toString(),
+      bannerImage: data.bannerImage?.toString(),
+      description: data.description?.toString(),
+      duration: (data.duration as num?)?.toInt(),
+      status: data.status?.toString(),
+      format: data.format?.toString(),
       totalEpisodes: totalEpisodes,
       episodes: episodes,
       type: 'anime',
     );
+
+    // return WatchSeriesModel(
+    //   id: id,
+    //   aniId: data['ani_id']?.toString() ?? id,
+    //   title: data['title']?.toString() ?? 'Unknown',
+    //   englishTitle: data['english']?.toString(),
+    //   poster: data['poster']?.toString(),
+    //   bannerImage: data['bannerImage']?.toString(),
+    //   description: data['description']?.toString(),
+    //   duration: (data['episodeDuration'] as num?)?.toInt(),
+    //   status: data['status']?.toString(),
+    //   format: data['format']?.toString(),
+    //   totalEpisodes: totalEpisodes,
+    //   episodes: episodes,
+    //   type: 'anime',
+    // );
   }
 
   /// Get FlixCloud servers (secondary fallback)

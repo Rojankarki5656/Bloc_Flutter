@@ -18,7 +18,7 @@ class RecentRemoteDataSource {
       AppLogger.debug('🆕 Fetching recently added: page=$page, perPage=$perPage');
 
       final response = await _apiService.get(
-        '${ApiEndpoints.anikoto}/api/recent-anime',
+        '${ApiEndpoints.baseUrl}/recent-anime',
         queryParams: {
           'page': page,
           'per_page': perPage,

@@ -182,7 +182,7 @@ class _WatchPageState extends State<WatchPage> {
   Widget _buildAppBar(WatchLoaded state) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppTheme.backgroundColor,
         border: Border(
           bottom: BorderSide(color: AppTheme.borderColor),
@@ -192,7 +192,7 @@ class _WatchPageState extends State<WatchPage> {
         children: [
           // Back button
           GestureDetector(
-            onTap: () => context.pop(),
+            onTap: () => context.push('/'),
             child: Icon(
               Icons.arrow_back,
               color: AppTheme.textPrimary,
