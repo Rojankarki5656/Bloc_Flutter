@@ -25,11 +25,19 @@ class RecentRemoteDataSource {
         },
       );
 
+      if (response is! Map) {
+        AppLogger.warning('⚠️ Invalid recent response: expected an object');
+        return [];
+      }
+
       AppLogger.debug('📦 Recent response keys: ${response.keys}');
 
       // Handle nested response structure
-      final data = response['data'] ?? response;
-      final results = data['results'] ?? data['data'] ?? data;
+      final rawData = response['data'] ?? response;
+      final data = rawData is Map ? rawData : null;
+      final results = data == null
+          ? rawData
+          : data['results'] ?? data['data'] ?? data;
 
       if (results is! List) {
         AppLogger.warning('⚠️ Invalid response structure');

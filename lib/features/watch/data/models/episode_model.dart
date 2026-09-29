@@ -61,10 +61,13 @@ class EpisodeModel extends Episode {
       );
     }
 
+    final rawNumber = json['number'] ?? json['episode'];
+    final episodeNumber = rawNumber is num
+        ? rawNumber.toInt()
+        : int.tryParse(rawNumber?.toString() ?? '') ?? 1;
+
     return EpisodeModel(
-      number: (json['number'] as num?)?.toInt() ??
-              (json['episode'] as num?)?.toInt() ??
-              1,
+      number: episodeNumber,
       title: json['title']?.toString(),
       thumbnail: json['thumbnail']?.toString(),
       embedUrls: embedUrls,

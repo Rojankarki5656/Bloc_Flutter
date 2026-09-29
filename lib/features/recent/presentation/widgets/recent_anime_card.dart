@@ -22,7 +22,7 @@ class RecentAnimeCard extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         // ✅ Navigate to watch page using the anime's ID (not ani_id)
-        final id = anime.id;
+        final id = anime.aniId;
         final episodeNum = anime.currentEpisode?.number ?? 1;
         context.go('/watch/$id/anime?ep=$episodeNum');
       },
